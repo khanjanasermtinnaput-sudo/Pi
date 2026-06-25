@@ -7,9 +7,12 @@ interface Props {
   height?: number;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PlotlyLib = any;
+
 export function GraphDisplay({ data, height = 400 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const [Plotly, setPlotly] = useState<typeof import("plotly.js") | null>(null);
+  const [Plotly, setPlotly] = useState<PlotlyLib>(null);
 
   useEffect(() => {
     import("plotly.js").then((mod) => setPlotly(mod.default));
@@ -28,7 +31,7 @@ export function GraphDisplay({ data, height = 400 }: Props) {
       margin: { l: 48, r: 24, t: 48, b: 48 },
     };
 
-    Plotly.newPlot(ref.current, data.data as Plotly.Data[], layout as Plotly.Layout, {
+    Plotly.newPlot(ref.current, data.data, layout, {
       responsive: true,
       displayModeBar: true,
       modeBarButtonsToRemove: ["sendDataToCloud", "select2d", "lasso2d"],
@@ -36,8 +39,9 @@ export function GraphDisplay({ data, height = 400 }: Props) {
       toImageButtonOptions: { format: "png", filename: "graph", scale: 2 },
     });
 
+    const node = ref.current;
     return () => {
-      if (ref.current) Plotly.purge(ref.current);
+      if (node) Plotly.purge(node);
     };
   }, [Plotly, data, height]);
 
