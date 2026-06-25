@@ -64,7 +64,7 @@ function SafeInline({ math }: { math: string }) {
 
 function isPlottable(operation: string, expression: string): boolean {
   const plottable = ["evaluate", "derivative", "integrate", "simplify", "expand", "factor"];
-  return plottable.includes(operation) && expression && !expression.includes("[[");
+  return plottable.includes(operation) && !!expression && !expression.includes("[[");
 }
 
 export function ResultDisplay({ result, autoGraph = true }: Props) {
