@@ -10,8 +10,8 @@ import numpy as np
 import sympy as sp
 from sympy import (
     symbols, sympify, latex, simplify, expand, factor, solve,
-    diff, integrate, limit, oo, series, fourier_series,
-    laplace_transform, inverse_laplace_transform,
+    diff, integrate, limit, oo, series,
+    laplace_transform,
     Matrix, eye, zeros, ones,
     sin, cos, tan, asin, acos, atan,
     sinh, cosh, tanh,
@@ -23,21 +23,18 @@ from sympy import (
     Sum, Product, Piecewise,
     FiniteSet, Interval,
     solveset, linsolve, nonlinsolve,
-    eigenvals, eigenvects,
     det, trace,
     Eq, Ne, Lt, Le, Gt, Ge,
     And, Or, Not,
     N, nsimplify, radsimp, cancel, together, apart,
     poly, Poly,
-    primenu, primeomega,
     divisors, totient,
     erf, erfc, gamma, beta, zeta,
     besseli, besselj, besselk, bessely,
-    hyper, meijerg,
-    conjugate, re as Re, im as Im,
-    arg, Abs as Magnitude,
-    cross, dot,
+    conjugate,
+    arg,
 )
+import sympy as _sp
 from sympy.parsing.sympy_parser import (
     parse_expr,
     standard_transformations,
@@ -209,7 +206,7 @@ def compute_inequality(expr_str: str, var_str: str = "x") -> dict:
     # Map string operators to SymPy
     expr_str_clean = expr_str.strip()
     expr = safe_parse(expr_str_clean)
-    solution = solveset(expr, var, domain=sp.S.Reals)
+    solution = solveset(expr, var, domain=_sp.S.Reals)
     steps = [
         {"index": 1, "description": "Parse the inequality", "expression": str(expr), "latex": fmt_latex(expr)},
         {"index": 2, "description": "Solve for the solution set", "expression": str(solution), "latex": fmt_latex(solution)},
@@ -538,19 +535,19 @@ def compute_complex(expr_str: str, operation: str) -> dict:
     steps = [{"index": 1, "description": "Complex expression", "expression": str(expr), "latex": fmt_latex(expr)}]
 
     if operation == "real_part":
-        result = sp.re(expr)
+        result = _sp.re(expr)
         steps.append({"index": 2, "description": "Extract real part", "expression": str(result), "latex": fmt_latex(result)})
     elif operation == "imag_part":
-        result = sp.im(expr)
+        result = _sp.im(expr)
         steps.append({"index": 2, "description": "Extract imaginary part", "expression": str(result), "latex": fmt_latex(result)})
     elif operation == "conjugate":
-        result = sp.conjugate(expr)
+        result = conjugate(expr)
         steps.append({"index": 2, "description": "Complex conjugate", "expression": str(result), "latex": fmt_latex(result)})
     elif operation == "magnitude":
-        result = sp.Abs(expr)
+        result = Abs(expr)
         steps.append({"index": 2, "description": "|z| = √(Re² + Im²)", "expression": str(result), "latex": fmt_latex(result)})
     elif operation == "argument":
-        result = sp.arg(expr)
+        result = arg(expr)
         steps.append({"index": 2, "description": "arg(z) = atan2(Im, Re)", "expression": str(result), "latex": fmt_latex(result)})
     else:
         result = simplify(expr)
