@@ -1,6 +1,8 @@
 import type { CalculateResponse, GraphData } from "@/types/math";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Local dev: set NEXT_PUBLIC_API_URL=http://localhost:8000 in .env.local
+// Render production: leave unset — Next.js rewrites /api/* → /_/backend/api/*
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
