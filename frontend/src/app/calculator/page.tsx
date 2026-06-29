@@ -1,215 +1,301 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Clock, Trash2, ChevronRight } from "lucide-react";
+import { ArrowLeft, Clock, X } from "lucide-react";
 import Link from "next/link";
-import { CalculatorInput } from "@/components/calculator/CalculatorInput";
-import { ResultDisplay } from "@/components/calculator/ResultDisplay";
-import { calculate } from "@/lib/api";
-import type { CalculateResponse } from "@/types/math";
+import { useTheme } from "next-themes";
 import { toast } from "sonner";
 
-interface HistoryItem {
-  id: string;
-  input: string;
-  result: CalculateResponse;
-  timestamp: Date;
+import { ExpressionDisplay } from "@/components/calculator/ExpressionDisplay";
+import { Keypad } from "@/components/calculator/Keypad";
+import { ResultDisplay } from "@/components/calculator/ResultDisplay";
+import { HistoryPanel } from "@/components/calculator/HistoryPanel";
+import { FormulaBuilders } from "@/components/calculator/FormulaBuilders";
+import { calculate } from "@/lib/api";
+import { useCalculatorStore } from "@/store/calculatorStore";
+
+// ─── Theme Toggle ─────────────────────────────────────────────────────────
+
+function ThemeToggle() {
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return <div className="theme-toggle" style={{ width: 180 }} />;
+
+  const current = theme ?? resolvedTheme ?? "light";
+
+  return (
+    <div className="theme-toggle" role="group" aria-label="Choose theme">
+      {(["light", "dark", "high-contrast"] as const).map((t) => (
+        <button
+          key={t}
+          className={`theme-toggle-btn ${current === t ? "active" : ""}`}
+          onClick={() => setTheme(t)}
+          aria-pressed={current === t}
+        >
+          {t === "light" ? "☀ Light" : t === "dark" ? "☾ Dark" : "◑ Contrast"}
+        </button>
+      ))}
+    </div>
+  );
 }
 
-const KEYBOARD_SHORTCUTS = [
-  { keys: ["↑", "↓"], label: "Navigate history" },
-  { keys: ["Enter"], label: "Solve" },
-  { keys: ["Shift", "Enter"], label: "New line" },
-  { keys: ["Ctrl", "K"], label: "Clear" },
-];
+// ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function CalculatorPage() {
   const [loading, setLoading] = useState(false);
-  const [currentResult, setCurrentResult] = useState<CalculateResponse | null>(null);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+  const historyIndexRef = useRef<number>(-1);
 
-  const handleSubmit = async (input: string) => {
-    setLoading(true);
-    setSelectedHistoryId(null);
-    try {
-      const result = await calculate(input);
-      setCurrentResult(result);
-      const item: HistoryItem = {
-        id: Math.random().toString(36).slice(2),
-        input,
-        result,
-        timestamp: new Date(),
-      };
-      setHistory((prev) => [item, ...prev.slice(0, 49)]);
-      if (!result.success) {
-        toast.error(result.error || "Computation failed");
+  const {
+    expression,
+    setExpression,
+    currentResult,
+    setCurrentResult,
+    setLastAnswer,
+    addToHistory,
+    history,
+    showHistory,
+    setShowHistory,
+  } = useCalculatorStore();
+
+  const handleSubmit = useCallback(
+    async (input: string) => {
+      if (!input.trim() || loading) return;
+      setLoading(true);
+      historyIndexRef.current = -1;
+      try {
+        const result = await calculate(input);
+        setCurrentResult(result);
+        addToHistory(input, result);
+        if (result.success && result.result) {
+          setLastAnswer(result.result_numeric ?? result.result);
+        }
+        if (!result.success) {
+          toast.error(result.error ?? "Computation failed");
+        }
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : "Server unreachable";
+        toast.error(`Error: ${message}`);
+        setCurrentResult({
+          success: false,
+          operation: "error",
+          input,
+          steps: [],
+          error: message,
+        });
+      } finally {
+        setLoading(false);
+        setTimeout(
+          () => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+          100
+        );
       }
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Server unreachable";
-      toast.error(`Error: ${message}`);
-      setCurrentResult({
-        success: false,
-        operation: "error",
-        input,
-        steps: [],
-        error: message,
-      });
-    } finally {
-      setLoading(false);
-      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
-    }
-  };
+    },
+    [loading, setCurrentResult, setLastAnswer, addToHistory]
+  );
 
-  const displayedResult = selectedHistoryId
-    ? history.find((h) => h.id === selectedHistoryId)?.result ?? currentResult
-    : currentResult;
+  // History navigation: ↑/↓ keys in ExpressionDisplay
+  const handleHistoryPrev = useCallback(() => {
+    if (history.length === 0) return;
+    const nextIdx = Math.min(historyIndexRef.current + 1, history.length - 1);
+    historyIndexRef.current = nextIdx;
+    setExpression(history[nextIdx].input);
+  }, [history, setExpression]);
+
+  const handleHistoryNext = useCallback(() => {
+    if (historyIndexRef.current <= 0) {
+      historyIndexRef.current = -1;
+      setExpression("");
+      return;
+    }
+    const nextIdx = historyIndexRef.current - 1;
+    historyIndexRef.current = nextIdx;
+    setExpression(history[nextIdx].input);
+  }, [history, setExpression]);
+
+  const handleHistorySelect = useCallback(
+    (input: string) => {
+      setExpression(input);
+    },
+    [setExpression]
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Top nav */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-gray-500 hover:text-gray-900 text-sm transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Home
-          </Link>
+    <div className="calc-page">
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <header className="calc-header">
+        <div className="calc-header-inner">
+          <div className="calc-header-left">
+            <Link
+              href="/"
+              className="text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors flex items-center gap-1.5"
+              aria-label="Back to home"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Home</span>
+            </Link>
 
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-sm font-semibold text-gray-900">Universal Scientific Calculator</span>
+            <a className="calc-header-logo" href="/calculator">
+              <span>π</span>
+              <span className="hidden sm:inline text-sm font-semibold" style={{ color: "var(--fg)" }}>
+                Pi
+              </span>
+            </a>
+
+            <div className="flex items-center gap-1.5">
+              <div className="calc-status-dot" />
+              <span className="text-xs text-gray-400 hidden md:inline">Online</span>
+            </div>
           </div>
 
-          <a
-            href="http://localhost:8000/docs"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            API Docs
-          </a>
+          <div className="calc-header-right">
+            <ThemeToggle />
+            <a
+              href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/docs`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors hidden sm:block"
+            >
+              API
+            </a>
+          </div>
         </div>
       </header>
 
-      <div className="flex flex-1 max-w-6xl mx-auto w-full px-4 py-6 gap-6">
-        {/* Sidebar: history */}
-        {history.length > 0 && (
-          <aside className="hidden lg:flex flex-col w-64 flex-shrink-0 gap-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-gray-400" />
-                <span className="text-sm font-medium text-gray-700">History</span>
-              </div>
+      {/* ── Body ───────────────────────────────────────────────────────── */}
+      <div className="calc-body">
+        {/* Expression display — full width */}
+        <ExpressionDisplay
+          onSubmit={handleSubmit}
+          loading={loading}
+          onHistoryPrev={handleHistoryPrev}
+          onHistoryNext={handleHistoryNext}
+        />
+
+        {/* Two-column layout */}
+        <div className="calc-columns">
+          {/* LEFT: Keypad */}
+          <div className="flex flex-col gap-3">
+            <Keypad onSubmit={handleSubmit} />
+
+            {/* Mobile: history toggle */}
+            <div className="lg:hidden">
               <button
-                onClick={() => {
-                  setHistory([]);
-                  setCurrentResult(null);
-                }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="history-toggle-btn w-full"
+                onClick={() => setShowHistory(!showHistory)}
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Clock className="w-4 h-4" />
+                <span>History ({history.length})</span>
               </button>
-            </div>
-
-            <div className="space-y-1 overflow-y-auto max-h-[calc(100vh-140px)]">
-              {history.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setSelectedHistoryId(item.id === selectedHistoryId ? null : item.id)}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-colors ${
-                    selectedHistoryId === item.id
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600 hover:bg-white hover:text-gray-900"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${item.result.success ? "bg-green-400" : "bg-red-400"}`} />
-                    <span className="truncate font-mono text-xs">{item.input}</span>
-                  </div>
-                  <p className="text-[10px] opacity-50 mt-0.5 ml-3.5">
-                    {item.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </aside>
-        )}
-
-        {/* Main content */}
-        <main className="flex-1 min-w-0 space-y-5">
-          {/* Input */}
-          <CalculatorInput onSubmit={handleSubmit} loading={loading} />
-
-          {/* Result */}
-          <AnimatePresence mode="wait">
-            {loading && (
-              <motion.div
-                key="loading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center justify-center py-16 gap-3 text-gray-500"
-              >
-                <div className="flex gap-1">
-                  {[0, 1, 2].map((i) => (
-                    <motion.div
-                      key={i}
-                      className="w-2 h-2 bg-blue-500 rounded-full"
-                      animate={{ y: [0, -8, 0] }}
-                      transition={{ duration: 0.6, delay: i * 0.15, repeat: Infinity }}
+              <AnimatePresence>
+                {showHistory && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden mt-2"
+                  >
+                    <HistoryPanel
+                      onSelect={handleHistorySelect}
+                      onRerun={handleSubmit}
                     />
-                  ))}
-                </div>
-                <span className="text-sm">Computing…</span>
-              </motion.div>
-            )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
 
-            {!loading && displayedResult && (
-              <motion.div
-                key="result"
-                ref={resultRef}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-              >
-                <ResultDisplay result={displayedResult} />
-              </motion.div>
-            )}
+          {/* RIGHT: Result + History (desktop) */}
+          <div className="flex flex-col gap-3">
+            {/* Loading */}
+            <AnimatePresence mode="wait">
+              {loading && (
+                <motion.div
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-center justify-center py-16 gap-3 text-gray-500 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800"
+                >
+                  <div className="flex gap-1.5">
+                    {[0, 1, 2].map((i) => (
+                      <motion.div
+                        key={i}
+                        className="w-2.5 h-2.5 bg-blue-500 rounded-full"
+                        animate={{ y: [0, -10, 0] }}
+                        transition={{ duration: 0.55, delay: i * 0.15, repeat: Infinity }}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-sm font-medium">Computing…</span>
+                </motion.div>
+              )}
 
-            {!loading && !displayedResult && (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="text-center py-20"
-              >
-                <div className="text-5xl mb-4">∫</div>
-                <p className="text-lg font-semibold text-gray-700 mb-2">Ready to solve</p>
-                <p className="text-sm text-gray-400 max-w-sm mx-auto">
-                  Enter any mathematical expression, equation, or question. Use the examples dropdown to explore capabilities.
-                </p>
+              {!loading && currentResult && (
+                <motion.div
+                  key="result"
+                  ref={resultRef}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <ResultDisplay result={currentResult} />
+                </motion.div>
+              )}
 
-                <div className="mt-8 flex flex-wrap gap-2 justify-center">
-                  {["solve x² − 4 = 0", "differentiate x³·sin(x)", "integrate e^x from 0 to 1", "eigenvalues of [[3,1],[1,3]]"].map((ex) => (
-                    <button
-                      key={ex}
-                      onClick={() => handleSubmit(ex)}
-                      className="text-xs font-mono px-3 py-1.5 border border-gray-200 rounded-lg text-gray-600 hover:bg-white hover:border-gray-300 transition-colors"
-                    >
-                      {ex}
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </main>
+              {!loading && !currentResult && (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex flex-col items-center justify-center py-16 gap-4 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 text-center"
+                >
+                  <div className="text-6xl select-none">π</div>
+                  <div>
+                    <p className="text-lg font-bold text-gray-800 dark:text-gray-100">
+                      Ready to compute
+                    </p>
+                    <p className="text-sm text-gray-400 mt-1 max-w-xs">
+                      Use the keypad or type any expression. Supports calculus,
+                      algebra, matrices, stats, and physics.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 justify-center mt-2 max-w-sm">
+                    {[
+                      "solve x**2 + 5x + 6 = 0",
+                      "differentiate sin(x)**2",
+                      "integrate x**2 from 0 to 1",
+                      "eigenvalues of [[3,1],[1,3]]",
+                    ].map((ex) => (
+                      <button
+                        key={ex}
+                        onClick={() => handleSubmit(ex)}
+                        className="text-xs font-mono px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-300 hover:border-blue-400 hover:text-blue-600 transition-colors"
+                      >
+                        {ex}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Desktop history */}
+            <div className="hidden lg:block">
+              <HistoryPanel
+                onSelect={handleHistorySelect}
+                onRerun={handleSubmit}
+              />
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Formula builder modals */}
+      <FormulaBuilders />
     </div>
   );
 }

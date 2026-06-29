@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { Toaster } from "sonner";
 
@@ -16,26 +17,42 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Universal Scientific Calculator — The Future of Scientific Computation",
-  description: "Solve mathematics, engineering, physics, and symbolic problems instantly. University-level computation with step-by-step solutions, graphs, and natural language input.",
-  keywords: ["scientific calculator", "math solver", "calculus", "algebra", "physics", "sympy", "step by step"],
+  title: "Pi — Professional Scientific Calculator",
+  description:
+    "A premium web scientific calculator. Solve calculus, linear algebra, statistics, and symbolic math instantly with step-by-step solutions, graphs, and AI parsing.",
+  keywords: [
+    "scientific calculator",
+    "math solver",
+    "calculus",
+    "algebra",
+    "physics",
+    "sympy",
+    "step by step",
+    "desmos",
+    "wolfram alpha",
+  ],
   openGraph: {
-    title: "Universal Scientific Calculator",
-    description: "The Future of Scientific Computation",
+    title: "Pi — Professional Scientific Calculator",
+    description: "Premium symbolic math computation with step-by-step solutions.",
     type: "website",
   },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
-        {children}
-        <Toaster position="bottom-right" richColors />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          themes={["light", "dark", "high-contrast"]}
+          enableSystem={false}
+        >
+          {children}
+          <Toaster position="bottom-right" richColors />
+        </ThemeProvider>
       </body>
     </html>
   );
